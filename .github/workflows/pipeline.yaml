@@ -46,3 +46,22 @@ jobs:
       - run: echo "Deploying to production"
         env:
           PAYMENTS_API_KEY: ${{ secrets.PAYMENTS_API_KEY }}
+
+  deploy-k8s:
+    needs: [test, secret-scan]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sops
+        run: |
+          curl -Lo sops https://github.com/getsops/sops/releases/latest/download/sops-linux-amd64
+          chmod +x sops && sudo mv sops /usr/local/bin/
+      - name: Decrypt secret
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+        run: sops --decrypt k8s/secret.enc.yaml > k8s/secret.yaml
+      - uses: helm/kind-action@v1
+      - run: kubectl apply -f k8s/secret.yaml
+      - run: kubectl get secret payments-api -o jsonpath='{.data.PAYMENTS_API_KEY}' | base64 -d
+      - run: rm k8s/secret.yaml
