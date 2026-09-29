@@ -26,6 +26,7 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
 
   deploy-staging:
     needs: [test, secret-scan]
@@ -53,15 +54,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install sops
-        run: |
-          curl -Lo sops https://github.com/getsops/sops/releases/latest/download/sops-linux-amd64
-          chmod +x sops && sudo mv sops /usr/local/bin/
+      - uses: nhedger/setup-sops@v2
       - name: Decrypt secret
         env:
           SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
         run: sops --decrypt k8s/secret.enc.yaml > k8s/secret.yaml
       - uses: helm/kind-action@v1
       - run: kubectl apply -f k8s/secret.yaml
-      - run: kubectl get secret payments-api -o jsonpath='{.data.PAYMENTS_API_KEY}' | base64 -d
+      - name: Verify secret
+        run: |
+          VALUE=$(kubectl get secret payments-api -o jsonpath='{.data.PAYMENTS_API_KEY}' | base64 -d)
+          echo "Decrypted secret value: $VALUE"
       - run: rm k8s/secret.yaml
